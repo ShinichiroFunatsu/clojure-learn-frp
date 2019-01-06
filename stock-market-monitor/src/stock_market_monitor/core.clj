@@ -1,21 +1,31 @@
 (ns stock-market-monitor.core
   (:require [seesaw.core :refer :all])
   (:import (java.util.concurrent ScheduledThreadPoolExecutor
-                                 TimeUnit)))
+                                 TimeUnit)
+           (clojure.lang PersistentQueue)))
 
 (native!)
 
+;;
 ;; GUI
+;;
 (def main-frame (frame :title "Stock price monitor",
                        :width 200, :height 100,
                        :on-close :exit))
 (def price-label       (label "Price: -"))
+(def running-avg-label (label "Running agerage: -"))
 
-(config! main-frame :content price-label)
+(config! main-frame :content 
+        (border-panel
+         :north price-label
+         :center running-avg-label
+         :border 5))
 
-
+;;
 ;; Logics
+;;
 
+;;prices
 (def pool (atom nil))
 
 (defn init-scheduler [num-threads]
@@ -34,14 +44,38 @@
   (Thread/sleep 200)
   (rand-int 1000))
 
+;;rolling(moiving) average
+(defn roll-buffer [buffer num buffer-size]
+  (let [buffer (conj buffer num)]
+    (if (> (count buffer) buffer-size)
+    (pop buffer)
+    buffer)))
 
+(defn avg [numbers]
+  (float (/ (reduce + numbers)
+            (count numbers))))
+
+(defn make-running-avg [buffer-size]
+  (let [buffer (atom clojure.lang.PersistentQueue/EMPTY)]
+    (fn [n]
+      (swap! buffer roll-buffer n buffer-size)
+      (avg @buffer))))
+
+(def running-avg (make-running-avg 5))
+
+(defn worker []
+  (let [price (share-price "XYZ")]
+    (->> (str "Price: " price) (text! price-label))
+    (->> (str "Runnning average: " (running-avg price))
+         (text! running-avg-label))))
+
+;;
 ;; main
+;;
 (defn -main [& args]
   (show! main-frame)
   (.addShutdownHook (Runtime/getRuntime)
                     (Thread. #(shutdown @pool)))
   (init-scheduler 1)
   (run-every @pool 500
-             #(->> (str "Price: " (share-price "xyz"))
-                   (text! price-label)
-                   invoke-now)))
+             #(invoke-now (worker))))

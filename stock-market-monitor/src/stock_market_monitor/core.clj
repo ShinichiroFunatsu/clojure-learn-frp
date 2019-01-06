@@ -26,39 +26,31 @@
 ;;
 
 ;;prices
-(defn make-price-obs [company-code]
-  (rx/return (share-price company-code)))
-
 (defn share-price [company-code]
   (Thread/sleep 200)
   (rand-int 1000))
 
-;;rolling(moiving) average
-(defn roll-buffer [buffer num buffer-size]
-  (let [buffer (conj buffer num)]
-    (if (> (count buffer) buffer-size)
-    (pop buffer)
-    buffer)))
+  (defn make-price-obs [_]
+    (rx/return (share-price "XYZ")))
 
+;;rolling(moiving) average
 (defn avg [numbers]
   (float (/ (reduce + numbers)
             (count numbers))))
-
-(defn make-running-avg [buffer-size]
-  (let [buffer (atom clojure.lang.PersistentQueue/EMPTY)]
-    (fn [n]
-      (swap! buffer roll-buffer n buffer-size)
-      (avg @buffer))))
-
-(def running-avg (make-running-avg 5))
 
 ;;
 ;; main
 ;;
 (defn -main [& args]
   (show! main-frame)
-  (let [price-obs (rx/flatmap (fn [_] (make-price-obs "XYZ"))
-                             (Observable/interval 500 TimeUnit/MILLISECONDS))]
+  (let [price-obs (-> (rx/flatmap make-price-obs
+                             (Observable/interval 500 TimeUnit/MILLISECONDS))
+                       (.publish))
+        sliding-buffer-obs (.buffer price-obs 5 1)]
     (rx/subscribe price-obs
                   (fn [price]
-                    (text! price-label (str "Price: " price))))))
+                    (text! price-label (str "Price: " price))))
+    (rx/subscribe sliding-buffer-obs
+                  (fn [buffer]
+                    (text! running-avg-label (str "Running average: " (avg buffer)))))
+    (.connect price-obs)))

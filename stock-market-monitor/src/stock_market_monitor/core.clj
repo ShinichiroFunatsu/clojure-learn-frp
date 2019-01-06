@@ -1,10 +1,11 @@
 (ns stock-market-monitor.core
   (:require [seesaw.core :refer :all])
   (:import (java.util.concurrent ScheduledThreadPoolExecutor
-     TimeUnit)))
+                                 TimeUnit)))
 
 (native!)
 
+;; GUI
 (def main-frame (frame :title "Stock price monitor",
                        :width 200, :height 100,
                        :on-close :exit))
@@ -12,14 +13,19 @@
 
 (config! main-frame :content price-label)
 
+
+;; Logics
+
 (def pool (atom nil))
 
 (defn init-scheduler [num-threads]
   (reset! pool (ScheduledThreadPoolExecutor. num-threads)))
+
 (defn run-every [pool millis f]
   (.scheduleWithFixedDelay pool
     f
     0 millis TimeUnit/MILLISECONDS))
+
 (defn shutdown [pool]
   (println "Shutting down scheduler...")
   (.shutdown pool))
@@ -29,6 +35,7 @@
   (rand-int 1000))
 
 
+;; main
 (defn -main [& args]
   (show! main-frame)
   (.addShutdownHook (Runtime/getRuntime)

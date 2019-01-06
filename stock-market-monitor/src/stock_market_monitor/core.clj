@@ -1,8 +1,8 @@
 (ns stock-market-monitor.core
-  (:require [seesaw.core :refer :all])
-  (:import (java.util.concurrent ScheduledThreadPoolExecutor
-                                 TimeUnit)
-           (clojure.lang PersistentQueue)))
+  (:require [rx.lang.clojure.core :as rx]
+            [seesaw.core :refer :all])
+  (:import (java.util.concurrent TimeUnit)
+           (rx Observable)))
 
 (native!)
 
@@ -26,19 +26,8 @@
 ;;
 
 ;;prices
-(def pool (atom nil))
-
-(defn init-scheduler [num-threads]
-  (reset! pool (ScheduledThreadPoolExecutor. num-threads)))
-
-(defn run-every [pool millis f]
-  (.scheduleWithFixedDelay pool
-    f
-    0 millis TimeUnit/MILLISECONDS))
-
-(defn shutdown [pool]
-  (println "Shutting down scheduler...")
-  (.shutdown pool))
+(defn make-price-obs [company-code]
+  (rx/return (share-price company-code)))
 
 (defn share-price [company-code]
   (Thread/sleep 200)
@@ -63,19 +52,13 @@
 
 (def running-avg (make-running-avg 5))
 
-(defn worker []
-  (let [price (share-price "XYZ")]
-    (->> (str "Price: " price) (text! price-label))
-    (->> (str "Runnning average: " (running-avg price))
-         (text! running-avg-label))))
-
 ;;
 ;; main
 ;;
 (defn -main [& args]
   (show! main-frame)
-  (.addShutdownHook (Runtime/getRuntime)
-                    (Thread. #(shutdown @pool)))
-  (init-scheduler 1)
-  (run-every @pool 500
-             #(invoke-now (worker))))
+  (let [price-obs (rx/flatmap (fn [_] (make-price-obs "XYZ"))
+                             (Observable/interval 500 TimeUnit/MILLISECONDS))]
+    (rx/subscribe price-obs
+                  (fn [price]
+                    (text! price-label (str "Price: " price))))))
